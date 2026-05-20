@@ -2,6 +2,7 @@
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
+- Fix deprecated API usage
 
 
 ## [3.0.3] - 2025-04-21

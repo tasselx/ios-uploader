@@ -69,9 +69,7 @@ async function runUpload(ctx) {
     // Bundle ID and version lookup.
     try {
       let extracted = await utility.extractBundleIdAndVersion(ctx.fileHandle);
-      ctx.bundleId = extracted.bundleId;
-      ctx.bundleVersion = extracted.bundleVersion;
-      ctx.bundleShortVersion = extracted.bundleShortVersion;
+      Object.assign(ctx, extracted);
       console.log(`Found Bundle ID "${ctx.bundleId}", Version ${ctx.bundleVersion} (${ctx.bundleShortVersion}).`);
     }
     catch (err) {
@@ -81,48 +79,54 @@ async function runUpload(ctx) {
 
     // Authenticate with Apple.
     await api.authenticateForSession(ctx);
+    await api.generateAppleConnectToken(ctx);
 
     // Find "Apple ID" of application.
     await api.lookupSoftwareForBundleId(ctx);
 
     console.log(`Identified application as "${ctx.appName}" (${ctx.appleId}).`);
 
-    // Generate metadata.
-    await api.generateMetadata(ctx);
+    // Generate asset description.
+    await api.generateAssetDescription(ctx);
 
-    // Validate metadata and assets.
-    await api.validateMetadata(ctx);
-    await api.validateAssets(ctx);
-    await api.clientChecksumCompleted(ctx);
+    await api.checkBuilds(ctx);
 
-    // Make reservations for uploading.
-    let reservations = await api.createReservation(ctx);
+    if (ctx.bundleId) {
+      await api.registerBuild(ctx);
+    }
+
+    await api.registerAssetDescriptionDeliveryFile(ctx);
+    await api.registerAssetDeliveryFile(ctx);
 
     // For time calculations.
     ctx.transferStartTime = Date.now();
     ctx.bytesSent = 0;
 
-    progressBar.start(ctx.metadataSize + ctx.fileSize, 0, { task: 'Uploading', speed: 'N/A', etas: 'N/A' });
+    progressBar.start(ctx.assetDescriptionSize + ctx.fileSize, 0, { task: 'Uploading', speed: 'N/A', etas: 'N/A' });
 
+    // Upload asset description.
     let q = queue(api.executeOperation, ctx.concurrency);
+    let tasks = ctx.assetDescriptionUploadOperations.map((operation) => ({ ctx, assetType: 'ASSET_DESCRIPTION', operation }));
+    q.push(tasks, () => {
+      let { speed, eta } = utility.formatSpeedAndEta(ctx.bytesSent, ctx.assetDescriptionSize + ctx.fileSize, Date.now() - ctx.transferStartTime);
+      progressBar.update(ctx.bytesSent, { speed, etas: eta });
+    });
+    await Promise.race([q.drain(), q.error()]);
+    await api.uploadCompleted(ctx, ctx.assetDescriptionDeliveryId);
 
-    // Start uploading.
-    for (let reservation of reservations) {
-      let tasks = reservation.operations.map((operation) => ({ ctx, reservation, operation }));
-      q.push(tasks, () => {
-        let { speed, eta } = utility.formatSpeedAndEta(ctx.bytesSent, ctx.metadataSize + ctx.fileSize, Date.now() - ctx.transferStartTime);
-        progressBar.update(ctx.bytesSent, { speed, etas: eta });
-      });
-      await Promise.race([q.drain(), q.error()]);
-      await api.commitReservation(ctx, reservation);
-    }
+    // Upload asset file.
+    tasks = ctx.assetUploadOperations.map((operation) => ({ ctx, assetType: 'ASSET', operation }));
+    q.push(tasks, () => {
+      let { speed, eta } = utility.formatSpeedAndEta(ctx.bytesSent, ctx.assetDescriptionSize + ctx.fileSize, Date.now() - ctx.transferStartTime);
+      progressBar.update(ctx.bytesSent, { speed, etas: eta });
+    });
+    await Promise.race([q.drain(), q.error()]);
+    await api.uploadCompleted(ctx, ctx.assetDeliveryId);
 
     // Calculate transfer time.
     ctx.transferTime = ctx.transferStartTime - Date.now();
 
     // Finish
-    await api.uploadDoneWithArguments(ctx);
-
     progressBar.stop();
     console.log('The cookies are done.');
   }

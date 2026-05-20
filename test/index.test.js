@@ -1,157 +1,144 @@
 const assert = require('assert').strict;
 const sinon = require('sinon');
-const nock = require('nock');
-const url = require('url');
+const fetchMock = require('fetch-mock').default;
 
 const index = require('../lib/index');
 const utility = require('../lib/utility');
 
-describe('lib/index', () => {
+const sinonBodyMatcher = (expectedUrl, expected) => {
+  return ({ url, options }) => {
+    if (typeof expectedUrl === 'string' ? url !== expectedUrl : !expectedUrl.test(url)) return false;
+    return sinon.match(expected).test(JSON.parse(options.body));
+  };
+};
 
+describe('lib/index', () => {
   const TEST_CTX = {
     filePath: '/PATH/TO/FILE',
     fileName: 'FILE',
     fileHandle: 'FD',
     fileSize: 12345,
-    fileModifiedTime: 1577930645678,
     fileChecksum: 'FILE_CHECKSUM',
-    metadataChecksum: '95ceb84069b68b06b5d7820ef537d22a',
-    metadataCompressed: "H4sIAAAAAAAACl1QW0vDMBh9F/wP4Xu3cbqCSNIhs8PhhIHbc4jp1y2sudCk3n69bbfasbfk3L7DYbNvU5FPrIN2lsMkuQWCVrlC2x2H7WZx8wCz7PqKeakOcoekldvAYR+jf6RUel9hopyhOjYWA9XGuzpiDWNmcGX8kjWmyRTaJELYgAgZAsZA+hShCw5P6/UqF8tn6DDhKxlLVxsO2oWjt3X3JhJ/PHL4aGxR4UC1ZCGjFKWu8B/q7ulfzCZ399OU0f59xnVaYaXBbLFc5YyO/zOR2qM6hMacrpoihV4u5i/5/PV9+8boIBmr0MsujPbVjxvQixG6jelp5OwPNMlY5pYBAAA=",
-    metadataSize: 406,
+    assetDescription: Buffer.from('ASSET_DESCRIPTION_CONTENT'),
+    assetDescriptionSize: 25,
+    assetDescriptionChecksum: 'ASSET_DESCRIPTION_CHECKSUM',
     appleId: 'APPLE_ID',
     bundleId: 'BUNDLE_ID',
     bundleVersion: 'BUNDLE_VERSION',
     bundleShortVersion: 'BUNDLE_SHORT_VERSION',
+    bundlePath: 'BUNDLE_PATH',
+    mobileProvision: { path: 'embedded.mobileprovision', data: Buffer.from('MOBILEPROVISION_CONTENT') },
     sessionId: 'SESSION_ID',
     sharedSecret: 'SECRET',
     appName: 'APP_NAME',
     appIconUrl: 'ICON_URL',
-    packageName: 'PACKAGE_NAME'
-  }
+    providerPublicId: 'PROVIDER_ID',
+    buildId: 'BUILD_ID',
+    dsToken: 'DS_TOKEN',
+    dsTokenName: 'DS_TOKEN_NAME',
+  };
+
+  const TEST_OPERATION = {
+    url: 'https://example.com/upload',
+    method: 'PUT',
+    offset: 0,
+    length: TEST_CTX.assetDescriptionSize,
+    requestHeaders: [
+      { name: 'Content-Type', value: 'application/octet-stream' },
+    ],
+  };
 
   describe('constructError()', () => {
     it('should return a formated error', () => {
-      let err = index.constructError("MESSAGE", { ErrorMessage: 'RESPONSE_ERROR' });
+      let err = index.constructError('MESSAGE', { ErrorMessage: 'RESPONSE_ERROR' });
       assert.ok(err instanceof Error);
       assert.equal(err.message, 'MESSAGE\nRESPONSE_ERROR');
     });
   });
 
-  describe('generateMetadata()', () => {
-
+  describe('generateAssetDescription()', () => {
     before(() => {
       sinon.stub(utility, 'getFileStats').withArgs(TEST_CTX.fileHandle).resolves({
         size: TEST_CTX.fileSize,
-        mtimeMs: TEST_CTX.fileModifiedTime + 0.1
       });
       sinon.stub(utility, 'getFileMD5').withArgs(TEST_CTX.fileHandle).resolves(TEST_CTX.fileChecksum);
+      sinon.stub(utility, 'makeBinaryPlist').returns(TEST_CTX.assetDescription);
+      sinon.stub(utility, 'getMD5HashString').withArgs(TEST_CTX.assetDescription).returns(TEST_CTX.assetDescriptionChecksum);
     });
 
     after(() => {
       sinon.restore();
     });
 
-    it('should correctly format ID based on current time', async () => {
-      const METADATA_INPUT = {
-        fileHandle: TEST_CTX.fileHandle,
-        filePath: TEST_CTX.filePath,
-        appleId: TEST_CTX.appleId
-      };
-      const ctx = Object.assign({}, METADATA_INPUT);
-      await index.generateMetadata(ctx);
-      const EXPECTED_METADATA = {
+    it('should generate asset description with correct properties', async () => {
+      const ctx = Object.assign({}, TEST_CTX, {
+        fileName: undefined,
+        fileSize: undefined,
+        fileChecksum: undefined,
+        assetDescription: undefined,
+        assetDescriptionSize: undefined,
+        assetDescriptionChecksum: undefined,
+      });
+      await index.generateAssetDescription(ctx);
+
+      sinon.assert.match(ctx, {
         fileName: TEST_CTX.fileName,
         fileSize: TEST_CTX.fileSize,
-        fileModifiedTime: TEST_CTX.fileModifiedTime,
         fileChecksum: TEST_CTX.fileChecksum,
-        metadataBuffer: sinon.match.instanceOf(Buffer),
-        metadataChecksum: sinon.match.string,
-        metadataCompressed: sinon.match.string,
-        metadataSize: sinon.match.number
-      };
-      sinon.assert.match(ctx, Object.assign({}, METADATA_INPUT, EXPECTED_METADATA));
+        assetDescription: TEST_CTX.assetDescription,
+        assetDescriptionSize: TEST_CTX.assetDescriptionSize,
+        assetDescriptionChecksum: TEST_CTX.assetDescriptionChecksum,
+      });
     });
-
   });
 
   describe('makeSoftwareServiceRequest()', () => {
-
     before(() => {
-
-      const serviceUrl = new url.URL(index.SOFTWARE_SERVICE_URL);
-
-      nock(serviceUrl.origin)
-        .post(serviceUrl.pathname, (body) => sinon.match({
-          jsonrpc: '2.0',
-          method: 'test',
-          id: sinon.match.string,
-          params: {}
-        }).test(body))
-        .reply(200, { result: { Success: true } });
-
+      fetchMock
+        .mockGlobal()
+        .route(
+          sinonBodyMatcher(index.SOFTWARE_SERVICE_URL, {
+            jsonrpc: '2.0',
+            method: 'test',
+            id: sinon.match.string,
+            params: {},
+          }), { result: { Success: true } }, { name: 'service-request' });
     });
 
     after(() => {
       sinon.restore();
+      fetchMock.hardReset();
     });
 
-    it('should make the appropriate HTTP request', async () => {
-      let res = await index.makeSoftwareServiceRequest({ sessionId: TEST_CTX.sessionId, sharedSecret: TEST_CTX.sharedSecret }, 'test', {});
-      sinon.assert.match(res, { Success: true });
+    it('should make the appropriate HTTP request and return data', async () => {
+      let res = await index.makeSoftwareServiceRequest({ ...TEST_CTX }, 'test', {});
+      sinon.assert.match(res, { data: { Success: true } });
     });
-
-  });
-
-  describe('makeProducerServiceRequest()', () => {
-
-    before(() => {
-      const serviceUrl = new url.URL(index.PRODUCER_SERVICE_URL);
-      nock(serviceUrl.origin)
-        .post(serviceUrl.pathname, (body) => sinon.match({
-          jsonrpc: '2.0',
-          method: 'test',
-          id: sinon.match.string,
-          params: {}
-        }).test(body))
-        .reply(200, { result: { Success: true } });
-    });
-
-    after(() => {
-      sinon.restore();
-    });
-
-    it('should make the appropriate HTTP request', async () => {
-      let res = await index.makeProducerServiceRequest({ sessionId: TEST_CTX.sessionId, sharedSecret: TEST_CTX.sharedSecret }, 'test', {});
-      sinon.assert.match(res, { Success: true });
-    });
-
   });
 
   describe('authenticateForSession()', () => {
-
     before(() => {
-      const serviceUrl = new url.URL(index.PRODUCER_SERVICE_URL);
-      nock(serviceUrl.origin)
-        .post(serviceUrl.pathname, (body) => sinon.match({
-          jsonrpc: '2.0',
-          method: 'authenticateForSession',
-          id: sinon.match.string,
-          params: { Username: TEST_CTX.username, Password: TEST_CTX.password }
-        }).test(body))
-        .reply(200, { result: { SessionId: TEST_CTX.sessionId, SharedSecret: TEST_CTX.sharedSecret } });
-      nock(serviceUrl.origin)
-        .post(serviceUrl.pathname)
-        .reply(200, { result: { Success: false } });
+      fetchMock
+        .mockGlobal()
+        .route(
+          sinonBodyMatcher(index.SOFTWARE_SERVICE_URL, {
+            jsonrpc: '2.0',
+            method: 'authenticateForSession',
+            id: sinon.match.string,
+            params: { Username: 'user@example.com', Password: 'password123' },
+          }), { result: { SessionId: TEST_CTX.sessionId, SharedSecret: TEST_CTX.sharedSecret } }, { name: 'auth-success' })
+        .route(index.SOFTWARE_SERVICE_URL, { result: { Success: false } }, { name: 'auth-fail', overwriteRoutes: false });
     });
 
     after(() => {
       sinon.restore();
+      fetchMock.hardReset();
     });
 
-    it('should make the appropriate HTTP request', async () => {
+    it('should authenticate and set session id and shared secret', async () => {
       const ctx = {
-        username: TEST_CTX.username,
-        password: TEST_CTX.password
+        username: 'user@example.com',
+        password: 'password123',
       };
       await index.authenticateForSession(ctx);
       sinon.assert.match(ctx, { sessionId: TEST_CTX.sessionId, sharedSecret: TEST_CTX.sharedSecret });
@@ -159,537 +146,414 @@ describe('lib/index', () => {
 
     it('should reject on failure', async () => {
       const ctx = {
-        username: TEST_CTX.username,
-        password: 'WRONG_PASSWORD'
+        username: 'user@example.com',
+        password: 'wrongpassword',
       };
       await assert.rejects(index.authenticateForSession(ctx));
     });
+  });
 
+  describe('generateAppleConnectToken()', () => {
+    before(() => {
+      fetchMock
+        .mockGlobal()
+        .route(
+          sinonBodyMatcher(index.SOFTWARE_SERVICE_URL, {
+            jsonrpc: '2.0',
+            method: 'generateAppleConnectToken',
+            id: sinon.match.string,
+            params: { Username: 'user@example.com', Password: 'password123' },
+          }), { result: { DSToken: TEST_CTX.dsToken, DSTokenCookieName: TEST_CTX.dsTokenName } }, { name: 'token-success' })
+        .route(index.SOFTWARE_SERVICE_URL, { result: { Success: false } }, { name: 'token-fail', overwriteRoutes: false });
+    });
+
+    after(() => {
+      sinon.restore();
+      fetchMock.hardReset();
+    });
+
+    it('should generate apple connect token', async () => {
+      const ctx = {
+        username: 'user@example.com',
+        password: 'password123',
+      };
+      await index.generateAppleConnectToken(ctx);
+      sinon.assert.match(ctx, { dsToken: TEST_CTX.dsToken, dsTokenName: TEST_CTX.dsTokenName });
+    });
+
+    it('should reject on failure', async () => {
+      const ctx = {
+        username: 'user@example.com',
+        password: 'wrongpassword',
+      };
+      await assert.rejects(index.generateAppleConnectToken(ctx));
+    });
   });
 
   describe('lookupSoftwareForBundleId()', () => {
-
     before(() => {
-      const serviceUrl = new url.URL(index.SOFTWARE_SERVICE_URL);
-      nock(serviceUrl.origin)
-        .post(serviceUrl.pathname, (body) => sinon.match({
-          jsonrpc: '2.0',
-          method: 'lookupSoftwareForBundleId',
-          id: sinon.match.string,
-          params: {
-            Application: 'altool',
-            ApplicationBundleId: 'com.apple.itunes.altool',
-            BundleId: TEST_CTX.bundleId,
-            Version: '4.0.1 (1182)'
-          }
-        }).test(body))
-        .reply(200, {
+      fetchMock
+        .mockGlobal()
+        .route(
+          sinonBodyMatcher(index.SOFTWARE_SERVICE_URL, {
+            jsonrpc: '2.0',
+            method: 'lookupSoftwareForBundleId',
+            id: sinon.match.string,
+            params: {
+              BundleId: TEST_CTX.bundleId,
+            },
+          }), {
+            result: {
+              Success: true,
+              ProviderPublicId: TEST_CTX.providerPublicId,
+              Attributes: [{ AppleID: TEST_CTX.appleId, Application: TEST_CTX.appName, IconURL: TEST_CTX.appIconUrl }],
+            },
+          }, { name: 'lookup-success' })
+        .route(index.SOFTWARE_SERVICE_URL, {
           result: {
-            Success: true,
-            Attributes: [{ AppleID: TEST_CTX.appleId, Application: TEST_CTX.appName, IconURL: TEST_CTX.appIconUrl }]
-          }
-        });
-      nock(serviceUrl.origin)
-        .post(serviceUrl.pathname)
-        .reply(200, {
-          result: {
-            Success: false
-          }
-        });
+            Success: false,
+          },
+        }, { name: 'lookup-fail', overwriteRoutes: false });
     });
 
     after(() => {
       sinon.restore();
+      fetchMock.hardReset();
     });
 
-    it('should make the appropriate HTTP request', async () => {
+    it('should lookup software for bundle id', async () => {
       const ctx = {
-        bundleId: TEST_CTX.bundleId
+        bundleId: TEST_CTX.bundleId,
+        sessionId: TEST_CTX.sessionId,
+        sharedSecret: TEST_CTX.sharedSecret,
       };
       await index.lookupSoftwareForBundleId(ctx);
-      sinon.assert.match(ctx, { appleId: TEST_CTX.appleId, appName: TEST_CTX.appName, appIconUrl: TEST_CTX.appIconUrl });
+      sinon.assert.match(ctx, {
+        appleId: TEST_CTX.appleId,
+        appName: TEST_CTX.appName,
+        appIconUrl: TEST_CTX.appIconUrl,
+        providerPublicId: TEST_CTX.providerPublicId,
+      });
     });
 
     it('should reject on failure', async () => {
       const ctx = {
-        bundleId: 'WRONG_BUNDLE_ID'
+        bundleId: 'WRONG_BUNDLE_ID',
+        sessionId: TEST_CTX.sessionId,
+        sharedSecret: TEST_CTX.sharedSecret,
       };
       await assert.rejects(index.lookupSoftwareForBundleId(ctx));
     });
-
   });
 
-  describe('validateMetadata()', () => {
-
+  describe('checkBuilds()', () => {
     before(() => {
-      const serviceUrl = new url.URL(index.PRODUCER_SERVICE_URL);
-      nock(serviceUrl.origin)
-        .post(serviceUrl.pathname, (body) => sinon.match({
-          jsonrpc: '2.0',
-          method: 'validateMetadata',
-          id: sinon.match.string,
-          params: {
-            Application: 'iTMSTransporter',
-            BaseVersion: '2.0.0',
-            Files: [
-              TEST_CTX.fileName,
-              'metadata.xml'
-            ],
-            iTMSTransporterMode: 'upload',
-            MetadataChecksum: TEST_CTX.metadataChecksum,
-            MetadataCompressed: TEST_CTX.metadataCompressed,
-            MetadataInfo: {
-              app_platform: 'ios',
-              apple_id: TEST_CTX.appleId,
-              asset_types: [
-                'bundle'
-              ],
-              bundle_identifier: TEST_CTX.bundleId,
-              bundle_short_version_string: TEST_CTX.bundleShortVersion,
-              bundle_version: TEST_CTX.bundleVersion,
-              device_id: '',
-              packageVersion: 'software5.4',
-              primary_bundle_identifier: ''
+      const buildUrl = /^https:\/\/contentdelivery\.itunes\.apple\.com\/MZContentDeliveryService\/iris\/provider\/.+\/v1\/builds(\?|$)/;
+
+      fetchMock
+        .mockGlobal()
+        .route(buildUrl, {
+          data: [{
+            id: TEST_CTX.buildId,
+            attributes: {
+              uploadedDate: null,
             },
-            PackageName: TEST_CTX.packageName,
-            PackageSize: TEST_CTX.fileSize + TEST_CTX.metadataSize,
-            Username: TEST_CTX.username,
-            Version: '2.0.0'
-          }
-        }).test(body))
-        .reply(200, {
-          result: {
-            Success: true
-          }
-        });
-      nock(serviceUrl.origin)
-        .post(serviceUrl.pathname)
-        .reply(200, {
-          result: {
-            Success: false
-          }
-        });
-    });
-
-    after(() => {
-      sinon.restore();
-    });
-
-    it('should make the appropriate HTTP request', async () => {
-      const ctx = Object.assign({}, TEST_CTX);
-      await index.validateMetadata(ctx);
-    });
-
-    it('should reject on failure', async () => {
-      const ctx = {
-      };
-      await assert.rejects(index.validateMetadata(ctx));
-    });
-
-  });
-
-  describe('validateAssets()', () => {
-
-    before(() => {
-      const serviceUrl = new url.URL(index.PRODUCER_SERVICE_URL);
-      nock(serviceUrl.origin)
-        .post(serviceUrl.pathname, (body) => sinon.match({
-          jsonrpc: '2.0',
-          method: 'validateAssets',
-          id: sinon.match.string,
-          params: {
-            Application: 'iTMSTransporter',
-            BaseVersion: '2.0.0',
-            Files: [
-              TEST_CTX.fileName,
-              'metadata.xml'
-            ],
-            iTMSTransporterMode: 'upload',
-            MetadataChecksum: TEST_CTX.metadataChecksum,
-            MetadataCompressed: TEST_CTX.metadataCompressed,
-            MetadataInfo: {
-              app_platform: 'ios',
-              apple_id: TEST_CTX.appleId,
-              asset_types: [
-                'bundle'
-              ],
-              bundle_identifier: TEST_CTX.bundleId,
-              bundle_short_version_string: TEST_CTX.bundleShortVersion ,
-              bundle_version: TEST_CTX.bundleVersion,
-              device_id: '',
-              packageVersion: 'software5.4',
-              primary_bundle_identifier: ''
+          }],
+        }, { name: 'builds-fresh', repeat: 1 })
+        .route(buildUrl, {
+          data: [{
+            id: TEST_CTX.buildId,
+            attributes: {
+              uploadedDate: '2020-01-01',
             },
-            PackageName: TEST_CTX.packageName,
-            PackageSize: TEST_CTX.fileSize + TEST_CTX.metadataSize,
-            StreamingInfoList: [],
-            Transport: 'HTTP',
-            Username: TEST_CTX.username,
-            Version: '2.0.0'
-          }
-        }).test(body))
-        .reply(200, {
-          result: {
-            Success: true,
-            NewPackageName: 'NEW_PACKAGE_NAME'
-          }
-        });
-      nock(serviceUrl.origin)
-        .post(serviceUrl.pathname)
-        .reply(200, {
-          result: {
-            Success: false
-          }
-        });
+          }],
+        }, { name: 'builds-uploaded', repeat: 1, overwriteRoutes: false })
+        .route(buildUrl, {
+          status: 400,
+          body: { errors: [{ detail: 'Build lookup failed' }] },
+        }, { name: 'builds-failed', repeat: 1, overwriteRoutes: false });
     });
 
     after(() => {
       sinon.restore();
+      fetchMock.hardReset();
     });
 
-    it('should make the appropriate HTTP request', async () => {
+    it('should set buildId when build exists', async () => {
       const ctx = Object.assign({}, TEST_CTX);
-      await index.validateAssets(ctx);
-      sinon.assert.match(ctx, { packageName: 'NEW_PACKAGE_NAME' });
+      await index.checkBuilds(ctx);
+      sinon.assert.match(ctx, { buildId: TEST_CTX.buildId });
     });
 
-    it('should reject on failure', async () => {
-      const ctx = {
-      };
-      await assert.rejects(index.validateAssets(ctx));
+    it('should reject when build is already uploaded', async () => {
+      const ctx = Object.assign({}, TEST_CTX);
+      await assert.rejects(index.checkBuilds(ctx), /already uploaded/);
     });
 
+    it('should reject on lookup failure', async () => {
+      const ctx = Object.assign({}, TEST_CTX);
+      await assert.rejects(index.checkBuilds(ctx));
+    });
   });
 
-  describe('clientChecksumCompleted()', () => {
-
+  describe('registerBuild()', () => {
     before(() => {
-      const serviceUrl = new url.URL(index.PRODUCER_SERVICE_URL);
-      nock(serviceUrl.origin)
-        .post(serviceUrl.pathname, (body) => sinon.match({
-          jsonrpc: '2.0',
-          method: 'clientChecksumCompleted',
-          id: sinon.match.string,
-          params: {
-            Application: 'iTMSTransporter',
-            BaseVersion: '2.0.0',
-            iTMSTransporterMode: 'upload',
-            NewPackageName: TEST_CTX.packageName,
-            Username: TEST_CTX.username,
-            Version: '2.0.0'
-          }
-        }).test(body))
-        .reply(200, {
-          result: {
-            Success: true
-          }
-        });
-      nock(serviceUrl.origin)
-        .post(serviceUrl.pathname)
-        .reply(200, {
-          result: {
-            Success: false
-          }
-        });
-    });
+      const registerBuildUrl = /^https:\/\/contentdelivery\.itunes\.apple\.com\/MZContentDeliveryService\/iris\/provider\/.+\/v1\/builds$/;
 
-    after(() => {
-      sinon.restore();
-    });
-
-    it('should make the appropriate HTTP request', async () => {
-      const ctx = Object.assign({}, TEST_CTX);
-      await index.clientChecksumCompleted(ctx);
-    });
-
-    it('should reject on failure', async () => {
-      const ctx = {
-      };
-      await assert.rejects(index.clientChecksumCompleted(ctx));
-    });
-
-  });
-
-  describe('createReservation()', () => {
-
-    before(() => {
-      const serviceUrl = new url.URL(index.PRODUCER_SERVICE_URL);
-      nock(serviceUrl.origin)
-        .post(serviceUrl.pathname, (body) => sinon.match({
-          jsonrpc: '2.0',
-          method: 'createReservation',
-          id: sinon.match.string,
-          params: {
-            Application: 'iTMSTransporter',
-            BaseVersion: '2.0.0',
-            fileDescriptions: [
-              {
-                checksum: TEST_CTX.metadataChecksum,
-                checksumAlgorithm: 'MD5',
-                contentType: 'application/xml',
-                fileName: 'metadata.xml',
-                fileSize: TEST_CTX.metadataSize
+      fetchMock
+        .mockGlobal()
+        .route(
+          sinonBodyMatcher(registerBuildUrl, {
+            data: {
+              attributes: {
+                cfBundleShortVersionString: TEST_CTX.bundleShortVersion,
+                cfBundleVersion: TEST_CTX.bundleVersion,
+                platform: 'IOS',
               },
-              {
-                checksum: TEST_CTX.fileChecksum,
-                checksumAlgorithm: 'MD5',
-                contentType: 'application/octet-stream',
-                fileName: TEST_CTX.fileName,
-                fileSize: TEST_CTX.fileSize,
-                uti: 'com.apple.ipa'
-              }
-            ],
-            iTMSTransporterMode: 'upload',
-            NewPackageName: TEST_CTX.packageName,
-            Username: TEST_CTX.username,
-            Version: '2.0.0'
-          }
-        }).test(body))
-        .reply(200, {
-          result: {
-            Success: true,
-            Reservations: []
-          }
-        });
-      nock(serviceUrl.origin)
-        .post(serviceUrl.pathname)
-        .reply(200, {
-          result: {
-            Success: false
-          }
-        });
+              relationships: sinon.match.object,
+              type: 'builds',
+            },
+          }), {
+            status: 201,
+            body: {
+              data: {
+                id: TEST_CTX.buildId,
+              },
+            },
+          }, { name: 'register-success' })
+        .route(registerBuildUrl, {
+          status: 400,
+          body: { errors: [{ detail: 'Registration failed' }] },
+        }, { name: 'register-fail', overwriteRoutes: false });
     });
 
     after(() => {
       sinon.restore();
+      fetchMock.hardReset();
     });
 
-    it('should make the appropriate HTTP request', async () => {
+    it('should register build and set buildId', async () => {
       const ctx = Object.assign({}, TEST_CTX);
-      await index.createReservation(ctx);
+      await index.registerBuild(ctx);
+      sinon.assert.match(ctx, { buildId: TEST_CTX.buildId });
+    });
+
+    it('should reject on registration failure', async () => {
+      const ctx = Object.assign({}, TEST_CTX, { bundleVersion: 'INVALID_VERSION' });
+      await assert.rejects(index.registerBuild(ctx));
+    });
+  });
+
+  describe('getBuildStatus()', () => {
+    before(() => {
+      const statusUrl = /^https:\/\/contentdelivery\.itunes\.apple\.com\/MZContentDeliveryService\/iris\/provider\/.+\/v1\/builds\/.+$/;
+
+      fetchMock
+        .mockGlobal()
+        .route(statusUrl, {
+          data: {
+            attributes: {
+              processingState: 'PROCESSING',
+            },
+          },
+        }, { name: 'status-processing', repeat: 1 })
+        .route(statusUrl, {
+          status: 400,
+          body: { errors: [{ detail: 'Build status lookup failed' }] },
+        }, { name: 'status-fail', repeat: 1, overwriteRoutes: false });
+    });
+
+    after(() => {
+      sinon.restore();
+      fetchMock.hardReset();
+    });
+
+    it('should return build processing state', async () => {
+      const ctx = Object.assign({}, TEST_CTX);
+      const state = await index.getBuildStatus(ctx);
+      assert.equal(state, 'PROCESSING');
+    });
+
+    it('should reject on lookup failure', async () => {
+      const ctx = Object.assign({}, TEST_CTX);
+      await assert.rejects(index.getBuildStatus(ctx));
+    });
+  });
+
+  describe('registerAssetDescriptionDeliveryFile()', () => {
+    before(() => {
+      const deliveryFilesUrl = /^https:\/\/contentdelivery\.itunes\.apple\.com\/MZContentDeliveryService\/iris\/provider\/.+\/v1\/buildDeliveryFiles$/;
+
+      fetchMock
+        .mockGlobal()
+        .route(
+          sinonBodyMatcher(deliveryFilesUrl, {
+            data: {
+              attributes: sinon.match({ assetType: 'ASSET_DESCRIPTION', sourceFileChecksum: TEST_CTX.assetDescriptionChecksum }),
+              relationships: sinon.match.object,
+              type: 'buildDeliveryFiles',
+            },
+          }), {
+            status: 201,
+            body: {
+              data: {
+                id: 'DELIVERY_ID',
+                attributes: {
+                  uploadOperations: [TEST_OPERATION],
+                },
+              },
+            },
+          }, { name: 'delivery-desc-success' })
+        .route(deliveryFilesUrl, {
+          status: 400,
+          body: { errors: [{ detail: 'Registration failed' }] },
+        }, { name: 'delivery-desc-fail', overwriteRoutes: false });
+    });
+
+    after(() => {
+      sinon.restore();
+      fetchMock.hardReset();
+    });
+
+    it('should register asset description delivery file', async () => {
+      const ctx = Object.assign({}, TEST_CTX);
+      await index.registerAssetDescriptionDeliveryFile(ctx);
+      sinon.assert.match(ctx, {
+        assetDescriptionDeliveryId: 'DELIVERY_ID',
+        assetDescriptionUploadOperations: [TEST_OPERATION],
+      });
+    });
+
+    it('should reject on registration failure', async () => {
+      const ctx = Object.assign({}, TEST_CTX, { assetDescriptionChecksum: undefined });
+      await assert.rejects(index.registerAssetDescriptionDeliveryFile(ctx));
+    });
+  });
+
+  describe('registerAssetDeliveryFile()', () => {
+    before(() => {
+      const deliveryFilesUrl = /^https:\/\/contentdelivery\.itunes\.apple\.com\/MZContentDeliveryService\/iris\/provider\/.+\/v1\/buildDeliveryFiles$/;
+
+      fetchMock
+        .mockGlobal()
+        .route(
+          sinonBodyMatcher(deliveryFilesUrl, {
+            data: {
+              attributes: sinon.match({ assetType: 'ASSET', sourceFileChecksum: TEST_CTX.fileChecksum }),
+              relationships: sinon.match.object,
+              type: 'buildDeliveryFiles',
+            },
+          }), {
+            status: 201,
+            body: {
+              data: {
+                id: 'ASSET_DELIVERY_ID',
+                attributes: {
+                  uploadOperations: [TEST_OPERATION],
+                },
+              },
+            },
+          }, { name: 'delivery-asset-success' })
+        .route(deliveryFilesUrl, {
+          status: 400,
+          body: { errors: [{ detail: 'Registration failed' }] },
+        }, { name: 'delivery-asset-fail', overwriteRoutes: false });
+    });
+
+    after(() => {
+      sinon.restore();
+      fetchMock.hardReset();
+    });
+
+    it('should register asset delivery file', async () => {
+      const ctx = Object.assign({}, TEST_CTX);
+      await index.registerAssetDeliveryFile(ctx);
+      sinon.assert.match(ctx, {
+        assetDeliveryId: 'ASSET_DELIVERY_ID',
+        assetUploadOperations: [TEST_OPERATION],
+      });
+    });
+
+    it('should reject on registration failure', async () => {
+      const ctx = Object.assign({}, TEST_CTX, { fileChecksum: undefined });
+      await assert.rejects(index.registerAssetDeliveryFile(ctx));
+    });
+  });
+
+  describe('uploadCompleted()', () => {
+    before(() => {
+      const patchDeliveryUrl = /^https:\/\/contentdelivery\.itunes\.apple\.com\/MZContentDeliveryService\/iris\/provider\/.+\/v1\/buildDeliveryFiles\/.+$/;
+
+      fetchMock
+        .mockGlobal()
+        .route(
+          sinonBodyMatcher(patchDeliveryUrl, {
+            data: {
+              attributes: sinon.match.object,
+              id: 'DELIVERY_ID',
+              type: 'buildDeliveryFiles',
+            },
+          }), 200, { name: 'completed-success' })
+        .route(patchDeliveryUrl, {
+          status: 400,
+          body: { errors: [{ detail: 'Failed to mark upload completed' }] },
+        }, { name: 'completed-fail', overwriteRoutes: false });
+    });
+
+    after(() => {
+      sinon.restore();
+      fetchMock.hardReset();
+    });
+
+    it('should mark upload as completed', async () => {
+      const ctx = Object.assign({}, TEST_CTX);
+      await index.uploadCompleted(ctx, 'DELIVERY_ID');
     });
 
     it('should reject on failure', async () => {
-      const ctx = {};
-      await assert.rejects(index.createReservation(ctx));
+      const ctx = Object.assign({}, TEST_CTX);
+      await assert.rejects(index.uploadCompleted(ctx, 'WRONG_ID'));
     });
-
   });
 
   describe('executeOperation()', () => {
-
-    const TEST_METADATA_OPERATION = {
-      uri: 'https://example.com/fileupload/metadata',
-      method: 'PUT',
-      offset: 0,
-      headers: {
-        'Content-Type': 'application/xml'
-      },
-      length: TEST_CTX.metadataSize
-    };
-
-    const TEST_BINARY_OPERATION = {
-      uri: 'https://example.com/fileupload/binary',
-      method: 'PUT',
-      offset: 10,
-      headers: {
-        'Content-Type': 'application/octet-stream'
-      },
-      length: 20
-    };
-
-    const TEST_BINARY_OPERATION_NETWORK_ERROR = {
-      uri: 'https://example.com/fileupload/error',
-      method: 'PUT',
-      offset: 10,
-      headers: {
-        'Content-Type': 'application/octet-stream'
-      },
-      length: 20
-    };
-
     before(() => {
-      const metadataUrl = new url.URL(TEST_METADATA_OPERATION.uri);
-      nock(metadataUrl.origin)
-        .matchHeader('Content-Type', TEST_METADATA_OPERATION.headers['Content-Type'])
-        .intercept(metadataUrl.pathname, TEST_METADATA_OPERATION.method, (body) => body.length === TEST_METADATA_OPERATION.length)
-        .reply(200);
+      fetchMock
+        .mockGlobal()
+        .route('https://example.com/upload', 200, { name: 'put-success' })
+        .route(/^https:\/\/example\.com\/.*$/, 400, { name: 'put-fail', overwriteRoutes: false });
 
       sinon.stub(utility, 'getFilePart')
-        .withArgs(TEST_CTX.fileHandle, TEST_BINARY_OPERATION.offset, TEST_BINARY_OPERATION.length)
-        .resolves(Buffer.alloc(TEST_BINARY_OPERATION.length));
-
-      const binaryUrl = new url.URL(TEST_BINARY_OPERATION.uri);
-      nock(binaryUrl.origin)
-        .matchHeader('Content-Type', TEST_BINARY_OPERATION.headers['Content-Type'])
-        .intercept(binaryUrl.pathname, TEST_BINARY_OPERATION.method, (body) => body.length === TEST_BINARY_OPERATION.length)
-        .reply(200);
-
-      nock(binaryUrl.origin)
-        .intercept(/.*/, TEST_BINARY_OPERATION.method)
-        .reply(400);
-
-        const errorUrl = new url.URL(TEST_BINARY_OPERATION_NETWORK_ERROR.uri);
-        nock(errorUrl.origin)
-          .matchHeader('Content-Type', TEST_BINARY_OPERATION_NETWORK_ERROR.headers['Content-Type'])
-          .intercept(errorUrl.pathname, TEST_BINARY_OPERATION_NETWORK_ERROR.method, (body) => body.length === TEST_BINARY_OPERATION_NETWORK_ERROR.length)
-          .replyWithError('Network Error');
-
+        .resolves(Buffer.alloc(TEST_OPERATION.length));
     });
 
     after(() => {
       sinon.restore();
+      fetchMock.hardReset();
     });
 
-    it('should make the appropriate HTTP request for metadata.xml', async () => {
+    it('should execute upload operation for asset', async () => {
       const ctx = Object.assign({ bytesSent: 0 }, TEST_CTX);
-      ctx.metadataBuffer = Buffer.alloc(ctx.metadataSize);
-      await index.executeOperation({ ctx, reservation: { file: 'metadata.xml' }, operation: TEST_METADATA_OPERATION });
-      sinon.assert.match(ctx, { bytesSent: TEST_METADATA_OPERATION.length });
+      await index.executeOperation({ ctx, assetType: 'ASSET', operation: TEST_OPERATION });
+      sinon.assert.match(ctx, { bytesSent: TEST_OPERATION.length });
     });
 
-    it('should make the appropriate HTTP request for binary', async () => {
+    it('should execute upload operation for asset description', async () => {
       const ctx = Object.assign({ bytesSent: 0 }, TEST_CTX);
-      await index.executeOperation({ ctx, reservation: { file: TEST_CTX.fileName }, operation: TEST_BINARY_OPERATION });
-      sinon.assert.match(ctx, { bytesSent: TEST_BINARY_OPERATION.length });
+      await index.executeOperation({ ctx, assetType: 'ASSET_DESCRIPTION', operation: TEST_OPERATION });
+      sinon.assert.match(ctx, { bytesSent: TEST_OPERATION.length });
     });
 
-    it('should do nothing on unknown file', async () => {
+    it('should do nothing on unknown asset type', async () => {
       const ctx = Object.assign({ bytesSent: 0 }, TEST_CTX);
-      await index.executeOperation({ ctx, reservation: { file: 'unknown' }, operation: {} });
+      await index.executeOperation({ ctx, assetType: 'UNKNOWN', operation: TEST_OPERATION });
       sinon.assert.match(ctx, { bytesSent: 0 });
     });
 
-    it('should reject on status error', async () => {
+    it('should reject on HTTP error', async () => {
       const ctx = Object.assign({ bytesSent: 0 }, TEST_CTX);
-      ctx.metadataBuffer = Buffer.alloc(ctx.metadataSize);
-      const wrongOperation = Object.assign({}, TEST_METADATA_OPERATION, { length: 0 })
-      await assert.rejects(index.executeOperation({ ctx, reservation: { file: 'metadata.xml' }, operation: wrongOperation }));
+      const errorOp = Object.assign({}, TEST_OPERATION, { url: 'https://example.com/error' });
+      await assert.rejects(index.executeOperation({ ctx, assetType: 'ASSET', operation: errorOp }), /Upload failed/);
     });
-
-    it('should reject on request error', async () => {
-      const ctx = Object.assign({ bytesSent: 0 }, TEST_CTX);
-      await assert.rejects(index.executeOperation({ ctx, reservation: { file: TEST_CTX.fileName }, operation: TEST_BINARY_OPERATION_NETWORK_ERROR }));
-    });
-
   });
-
-  describe('commitReservation()', () => {
-
-    before(() => {
-      const serviceUrl = new url.URL(index.PRODUCER_SERVICE_URL);
-      nock(serviceUrl.origin)
-        .post(serviceUrl.pathname, (body) => sinon.match({
-          jsonrpc: '2.0',
-          method: 'commitReservation',
-          id: sinon.match.string,
-          params: {
-            Application: 'iTMSTransporter',
-            BaseVersion: '2.0.0',
-            iTMSTransporterMode: 'upload',
-            NewPackageName: TEST_CTX.packageName,
-            reservations: [
-              'RESERVATION_ID'
-            ],
-            Username: TEST_CTX.username,
-            Version: '2.0.0'
-          }
-        }).test(body))
-        .reply(200, {
-          result: {
-            Success: true
-          }
-        });
-      nock(serviceUrl.origin)
-        .post(serviceUrl.pathname)
-        .reply(200, {
-          result: {
-            Success: false
-          }
-        });
-    });
-
-    after(() => {
-      sinon.restore();
-    });
-
-    it('should make the appropriate HTTP request', async () => {
-      const ctx = Object.assign({}, TEST_CTX);
-      await index.commitReservation(ctx, { id: 'RESERVATION_ID' });
-    });
-
-    it('should reject on failure', async () => {
-      const ctx = Object.assign({}, TEST_CTX);
-      await assert.rejects(index.commitReservation(ctx, { id: 'WRONG_RESERVATION_ID' }));
-    });
-
-  });
-
-  describe('uploadDoneWithArguments()', () => {
-
-    before(() => {
-      const serviceUrl = new url.URL(index.PRODUCER_SERVICE_URL);
-      nock(serviceUrl.origin)
-        .post(serviceUrl.pathname, (body) => sinon.match({
-          jsonrpc: '2.0',
-          method: 'uploadDoneWithArguments',
-          id: sinon.match.string,
-          params: {
-            Application: 'iTMSTransporter',
-            BaseVersion: '2.0.0',
-            FileSizeInfo: {
-              [TEST_CTX.fileName]: TEST_CTX.fileSize,
-              "metadata.xml": TEST_CTX.metadataSize
-            },
-            ClientChecksumInfo: [
-              {
-                CalculatedChecksum: TEST_CTX.fileChecksum,
-                CalculationTime: 100,
-                FileLastModified: TEST_CTX.fileModifiedTime,
-                Filename: TEST_CTX.fileName,
-                fileSize: TEST_CTX.fileSize
-              }
-            ],
-            StatisticsArray: [],
-            StreamingInfoList: [],
-            iTMSTransporterMode: 'upload',
-            PackagePathWithoutBase: null,
-            NewPackageName: TEST_CTX.packageName,
-            Transport: 'HTTP',
-            TransferTime: TEST_CTX.transferTime,
-            NumberBytesTransferred: TEST_CTX.fileSize + TEST_CTX.metadataSize,
-            Username: TEST_CTX.username,
-            Version: '2.0.0'
-          }
-        }).test(body))
-        .reply(200, {
-          result: {
-            Success: true
-          }
-        });
-      nock(serviceUrl.origin)
-        .post(serviceUrl.pathname)
-        .reply(200, {
-          result: {
-            Success: false
-          }
-        });
-    });
-
-    after(() => {
-      sinon.restore();
-    });
-
-    it('should make the appropriate HTTP request', async () => {
-      const ctx = Object.assign({}, TEST_CTX);
-      await index.uploadDoneWithArguments(ctx);
-    });
-
-    it('should reject on failure', async () => {
-      const ctx = {};
-      await assert.rejects(index.uploadDoneWithArguments(ctx));
-    });
-
-  });
-
 });
