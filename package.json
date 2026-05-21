@@ -47,7 +47,6 @@
     "sinon": "^20.0.0"
   },
   "files": [
-    "assets/",
     "bin/",
     "lib/"
   ],
@@ -56,7 +55,7 @@
       "./bin/**/*.js",
       "./lib/**/*.js"
     ],
-    "assets": "./assets/**/*",
+    "assets": [],
     "targets": [
       "node18-win-x64",
       "node18-macos-x64",
