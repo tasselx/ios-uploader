@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
 ### Removed
 - **BREAKING** Dropped support for FTP URL input
 - Removed unused functions and dependencies
+- Removed comparison of deprecated altool from README.md
 
 
 ## [3.1.0] - 2026-05-20

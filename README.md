@@ -24,19 +24,15 @@ The program is also available as standalone binaries for all major OS:es on [git
 
 ## Usage
 
-If you have used `altool` previously to upload applications the process should be very familiar.
+Basic usage:
 
 ```sh
 $ ios-uploader -u <username> -p <password> -f <path/to/app.ipa>
 ```
 
-is equivalent to the following command using altool (macOS only):
-
-```sh
-$ xcrun altool --upload-app -u <username> -p <password> -f <path/to/app.ipa>
-```
-
-> See this page for information on how to generate an app specific password: <br>https://support.apple.com/en-us/HT204397
+> **Note**<br>
+> The password should be an app-specific password, not your standard Apple Account password.<br>
+> More information: https://support.apple.com/en-us/HT204397
 
 ## Options
 
