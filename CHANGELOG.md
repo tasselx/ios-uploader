@@ -2,6 +2,10 @@
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
+### Added
+- Added project icon
+- Added metadata to Windows executable, including icon
+
 ### Changed
 - **BREAKING** Dropped support for Node versions below v20
 - Converted project to ESM

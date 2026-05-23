@@ -21,7 +21,7 @@
   },
   "scripts": {
     "start": "node bin/index.js",
-    "build": "pkg .",
+    "build": "pkg . && node post-build.js",
     "lint": "eslint --max-warnings 0 ./bin/*.js ./lib/*.js ./test/*.js",
     "fix": "eslint --fix ./bin/*.js ./lib/*.js ./test/*.js",
     "test": "c8 mocha",
@@ -48,7 +48,9 @@
     "fetch-mock": "^12.6.0",
     "globals": "^17.6.0",
     "mocha": "^11.7.6",
-    "sinon": "^22.0.0"
+    "resedit": "^3.0.2",
+    "sinon": "^22.0.0",
+    "svg-to-ico": "^1.1.1"
   },
   "files": [
     "bin/",
