@@ -2,8 +2,19 @@
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
+### Changed
+- **BREAKING** Dropped support for Node versions below v20
+- Converted project to ESM
+- Updated dependencies
+- Axios completely replaced by fetch API
+
 ### Fixed
 - Removed no longer used metadata_template.xml
+- Fixed check of existing build ID.
+
+### Removed
+- **BREAKING** Dropped support for FTP URL input
+- Removed unused functions and dependencies
 
 
 ## [3.1.0] - 2026-05-20

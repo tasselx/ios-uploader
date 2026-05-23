@@ -12,7 +12,7 @@ Easy to use, cross-platform tool to upload iOS apps to App Store Connect.
 
 ### System Requirements
 * **OS**: Windows, macOS or Linux
-* **Node.js**: v18 or newer (bundled with standalone binaries)
+* **Node.js**: v20 or newer (bundled with standalone binaries)
 
 If you have Node.js and npm installed the simplest way is to just install the package globally. The tool will automatically be added to your PATH as `ios-uploader`.
 
@@ -44,7 +44,7 @@ $ xcrun altool --upload-app -u <username> -p <password> -f <path/to/app.ipa>
   -v, --version               output the current version and exit
   -u, --username <string>     your Apple ID
   -p, --password <string>     app-specific password for your Apple ID
-  -f, --file <string>         path to .ipa file for upload (local file, http(s):// or ftp:// URL)
+  -f, --file <string>         path to .ipa file for upload (local file or http(s):// URL)
   -c, --concurrency <number>  number of concurrent upload tasks to use (default: 4)
   -h, --help                  output this help message and exit
 ```

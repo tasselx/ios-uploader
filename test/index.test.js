@@ -1,9 +1,9 @@
-const assert = require('assert').strict;
-const sinon = require('sinon');
-const fetchMock = require('fetch-mock').default;
-
-const index = require('../lib/index');
-const utility = require('../lib/utility');
+import { describe, it, before, after } from 'mocha';
+import assert from 'node:assert/strict';
+import sinon from 'sinon';
+import fetchMock from 'fetch-mock';
+import index from '../lib/index.js';
+import utility from '../lib/utility.js';
 
 const sinonBodyMatcher = (expectedUrl, expected) => {
   return ({ url, options }) => {
@@ -26,8 +26,8 @@ describe('lib/index', () => {
     bundleId: 'BUNDLE_ID',
     bundleVersion: 'BUNDLE_VERSION',
     bundleShortVersion: 'BUNDLE_SHORT_VERSION',
-    bundlePath: 'BUNDLE_PATH',
-    mobileProvision: { path: 'embedded.mobileprovision', data: Buffer.from('MOBILEPROVISION_CONTENT') },
+    infoPlist: { fileName: 'Payload/Test.app/Info.plist', data: Buffer.from('INFO_CONTENT') },
+    mobileProvision: { fileName: 'Payload/Test.app/embedded.mobileprovision', data: Buffer.from('MOBILEPROVISION_CONTENT') },
     sessionId: 'SESSION_ID',
     sharedSecret: 'SECRET',
     appName: 'APP_NAME',
@@ -49,10 +49,26 @@ describe('lib/index', () => {
   };
 
   describe('constructError()', () => {
-    it('should return a formated error', () => {
-      let err = index.constructError('MESSAGE', { ErrorMessage: 'RESPONSE_ERROR' });
+    it('should return a formatted error', () => {
+      let err = index.constructError('MESSAGE', { data: { ErrorMessage: 'RESPONSE_ERROR' } });
       assert.ok(err instanceof Error);
       assert.equal(err.message, 'MESSAGE\nRESPONSE_ERROR');
+    });
+  });
+
+  describe('constructDSError()', () => {
+    it('should return a formatted error', async () => {
+      const res = new Response(JSON.stringify({ errors: [{ detail: 'RESPONSE_ERROR' }] }), { status: 400 });
+      let err = await index.constructDSError('MESSAGE', res);
+      assert.ok(err instanceof Error);
+      assert.equal(err.message, 'MESSAGE\nRESPONSE_ERROR');
+    });
+
+    it('should handle response body not being JSON', async () => {
+      const res = new Response('Invalid JSON', { status: 400 });
+      let err = await index.constructDSError('MESSAGE', res);
+      assert.ok(err instanceof Error);
+      assert.equal(err.message, 'MESSAGE');
     });
   });
 

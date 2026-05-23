@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 
-const { queue } = require('async');
-const { Command } = require('commander');
-const cliProgress = require('cli-progress');
-const prettyBytes = require('pretty-bytes');
-const { version, name } = require('../package');
+import { createRequire } from 'node:module';
+import { queue } from 'async';
+import { Command } from 'commander';
+import cliProgress from 'cli-progress';
+import prettyBytes from 'pretty-bytes';
+import utility from '../lib/utility.js';
+import api from '../lib/index.js';
 
-const utility = require('../lib/utility');
-const api = require('../lib/index');
+const { version, name } = createRequire(import.meta.url)('../package.json');
 
 const cli = new Command()
   .version(version, '-v, --version', 'output the current version and exit')
@@ -16,11 +17,18 @@ const cli = new Command()
   .helpOption('-h, --help', 'output this help message and exit')
   .requiredOption('-u, --username <string>', 'your Apple ID')
   .requiredOption('-p, --password <string>', 'app-specific password for your Apple ID')
-  .requiredOption('-f, --file <string>', 'path to .ipa file for upload (local file, http(s):// or ftp:// URL)')
+  .requiredOption('-f, --file <string>', 'path to .ipa file for upload (local file or http(s):// URL)')
   .option('-c, --concurrency <number>', 'number of concurrent upload tasks to use', 4);
 
-const fileUrlRegex = /^(?:https?|ftp):\/\//;
+const fileUrlRegex = /^https?:\/\//i;
 
+/**
+ * Formats a value for display in the progress bar.
+ * @param {number} v The value to format.
+ * @param {cliProgress.Options} options The options for formatting.
+ * @param {cliProgress.ValueType} type The type of value (e.g. 'value', 'total', etc.).
+ * @returns {string} The formatted value.
+ */
 function formatValue(v, options, type) {
   switch (type) {
     case 'value':
@@ -31,6 +39,10 @@ function formatValue(v, options, type) {
   }
 }
 
+/**
+ * Runs the upload process.
+ * @param {object} ctx The context object containing upload information.
+ */
 async function runUpload(ctx) {
   let exitCode = 0;
 
@@ -44,11 +56,10 @@ async function runUpload(ctx) {
   try {
     // Handle URLs to ipa file.
     if (fileUrlRegex.test(ctx.filePath)) {
-      ctx.originalFilePath = ctx.filePath;
       try {
         const transferStartTime = Date.now();
         let started = false;
-        ctx.filePath = await utility.downloadTempFile(ctx.filePath, (current, total) => {
+        ctx.fileHandle = await utility.downloadTempFile(ctx.filePath, (current, total) => {
           let { speed, eta } = utility.formatSpeedAndEta(current, total, Date.now() - transferStartTime);
           !started
             ? progressBar.start(total, current, { task: 'Downloading', speed, etas: eta })
@@ -58,23 +69,28 @@ async function runUpload(ctx) {
         progressBar.stop();
       }
       catch (err) {
-        throw new Error(`Could not download file: ${err.message}`);
+        throw new Error(`Could not download file: ${err.message}`, { cause: err });
       }
       ctx.usingTempFile = true;
     }
-
+    else {
     // Open the application file for reading.
-    ctx.fileHandle = await utility.openFile(ctx.filePath);
+      try {
+        ctx.fileHandle = await utility.openFile(ctx.filePath);
+      }
+      catch (err) {
+        throw new Error(`Could not open file: ${err.message}`, { cause: err });
+      }
+    }
 
     // Bundle ID and version lookup.
     try {
-      let extracted = await utility.extractBundleIdAndVersion(ctx.fileHandle);
-      Object.assign(ctx, extracted);
+      await utility.extractBundleIdAndVersion(ctx);
       console.log(`Found Bundle ID "${ctx.bundleId}", Version ${ctx.bundleVersion} (${ctx.bundleShortVersion}).`);
     }
     catch (err) {
       console.error(err.message);
-      throw new Error('Failed to extract Bundle ID and version, are you supplying a valid IPA-file?');
+      throw new Error('Failed to extract Bundle ID and version, are you supplying a valid IPA-file?', { cause: err });
     }
 
     // Authenticate with Apple.
@@ -89,9 +105,10 @@ async function runUpload(ctx) {
     // Generate asset description.
     await api.generateAssetDescription(ctx);
 
+    // Check for existing builds with the same version, and register build if not found.
     await api.checkBuilds(ctx);
 
-    if (ctx.bundleId) {
+    if (!ctx.buildId) {
       await api.registerBuild(ctx);
     }
 
@@ -138,16 +155,19 @@ async function runUpload(ctx) {
   finally {
     if (ctx.fileHandle) {
       await utility.closeFile(ctx.fileHandle);
-    }
-    if (ctx.usingTempFile) {
-      await utility.removeTempFile(ctx.filePath);
+      if (ctx.usingTempFile) {
+        await utility.removeTempFile(ctx.fileHandle.path);
+      }
     }
   }
 
   process.exit(exitCode);
 }
 
-async function run() {
+/**
+ * Main function to run the CLI application. Parses command line arguments, sets up context, and runs the upload process.
+ */
+export async function run() {
   // Parse command line params
   cli.parse(process.argv);
 
@@ -159,22 +179,18 @@ async function run() {
     password: options.password,
     filePath: options.file,
     concurrency: options.concurrency,
-    packageName: 'app.itmsp',
   };
 
   await runUpload(ctx);
 }
 
-function stop(signal) {
+/**
+ * Handles graceful shutdown on receiving termination signals.
+ * @param {number} signal The signal number.
+ */
+export function stop(signal) {
   // Fix to make sure cursor gets restored to visible state when exiting mid progress.
   process.stderr.write('\u001B[?25h');
 
   process.exit(128 + signal);
-}
-
-// Run only if called directly (e.g. not when tested)
-if (require.main === module) {
-  process.on('SIGINT', () => stop(2));
-  process.on('SIGTERM', () => stop(15));
-  run();
 }

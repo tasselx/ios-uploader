@@ -1,12 +1,11 @@
-const assert = require('assert').strict;
-const sinon = require('sinon');
-const fs = require('fs');
-const stream = require('stream');
-const yauzl = require('yauzl');
-const zlib = require('zlib');
-const axios = require('axios');
-
-const utility = require('../lib/utility');
+import { describe, it, before, beforeEach, after, afterEach } from 'mocha';
+import assert from 'node:assert/strict';
+import sinon from 'sinon';
+import fs from 'node:fs/promises';
+import stream from 'stream';
+import yauzl from 'yauzl';
+import fetchMock from 'fetch-mock';
+import utility from '../lib/utility.js';
 
 const TEST_PLIST = `
 <?xml version="1.0" encoding="UTF-8"?>
@@ -52,6 +51,13 @@ describe('lib/utility', () => {
     });
   });
 
+  describe('makeBinaryPlist()', () => {
+    it('should generate a valid binary plist', () => {
+      const result = utility.makeBinaryPlist({ CFBundleIdentifier: 'BUNDLE_IDENTIFIER' });
+      assert.ok(Buffer.isBuffer(result));
+    });
+  });
+
   describe('makeSessionDigest()', () => {
     it('should generate a valid digest string', () => {
       assert.equal(utility.makeSessionDigest('SESSION-ID', 'REQUEST_CHECKSUM', 'REQUEST-ID', 'SECRET'), 'af7b0121fe12199cdb5d765b73bd7cb5');
@@ -61,8 +67,8 @@ describe('lib/utility', () => {
   describe('openFile()', () => {
     before(() => {
       let stub = sinon.stub(fs, 'open');
-      stub.withArgs('VALIDPATH').yields(undefined, 1);
-      stub.withArgs('WRONGPATH').yields(new Error(), undefined);
+      stub.withArgs('VALIDPATH').resolves({ fd: 0 });
+      stub.withArgs('WRONGPATH').rejects(new Error());
     });
 
     after(() => {
@@ -70,8 +76,9 @@ describe('lib/utility', () => {
     });
 
     it('should resolve with file-descriptor on success', async () => {
-      let fd = await utility.openFile('VALIDPATH');
-      assert.equal(fd, 1);
+      let fileHandle = await utility.openFile('VALIDPATH');
+      assert.equal(fileHandle.fd, 0);
+      assert.equal(fileHandle.path, 'VALIDPATH');
     });
 
     it('should reject with error on failure', async () => {
@@ -80,22 +87,14 @@ describe('lib/utility', () => {
   });
 
   describe('closeFile()', () => {
-    before(() => {
-      let stub = sinon.stub(fs, 'close');
-      stub.withArgs(1).yields(undefined);
-      stub.withArgs(0).yields(new Error());
-    });
-
-    after(() => {
-      sinon.restore();
-    });
-
     it('should resolve on success', async () => {
-      await utility.closeFile(1);
+      const fileHandleMock = { close: sinon.stub().resolves() };
+      await utility.closeFile(fileHandleMock);
     });
 
     it('should reject with error on failure', async () => {
-      await assert.rejects(utility.closeFile(0));
+      const fileHandleMock = { close: sinon.stub().rejects(new Error('CLOSE_ERROR')) };
+      await assert.rejects(utility.closeFile(fileHandleMock));
     });
   });
 
@@ -169,21 +168,21 @@ describe('lib/utility', () => {
     });
 
     it('should resolve on success', async () => {
-      let data = await utility.readFileDataFromZip(0, /^Payload\/[^/]*.app\/Info\.plist$/);
-      sinon.assert.match(data, sinon.match({ fileName: 'Payload/Test.app/Info.plist', path: sinon.match.string, data: sinon.match.instanceOf(Buffer) }));
+      let data = await utility.readFileDataFromZip({ fd: 0 }, /^Payload\/[^/]*.app\/Info\.plist$/);
+      sinon.assert.match(data, sinon.match({ fileName: 'Payload/Test.app/Info.plist', data: sinon.match.instanceOf(Buffer) }));
     });
 
     it('should throw if unable to open read stream', async () => {
-      await assert.rejects(utility.readFileDataFromZip(1, /^Payload\/[^/]*.app\/Info\.plist$/), { message: 'STREAM_ERR' });
+      await assert.rejects(utility.readFileDataFromZip({ fd: 1 }, /^Payload\/[^/]*.app\/Info\.plist$/), { message: 'STREAM_ERR' });
     });
 
     it('should resolve to null if not found', async () => {
-      let data = await utility.readFileDataFromZip(2, /^Payload\/[^/]*.app\/Info\.plist$/);
+      let data = await utility.readFileDataFromZip({ fd: 2 }, /^Payload\/[^/]*.app\/Info\.plist$/);
       sinon.assert.match(data, null);
     });
 
     it('should throw if unable to read file', async () => {
-      await assert.rejects(utility.readFileDataFromZip(3, /^Payload\/[^/]*.app\/Info\.plist$/), { message: 'TEST_ERROR' });
+      await assert.rejects(utility.readFileDataFromZip({ fd: 3 }, /^Payload\/[^/]*.app\/Info\.plist$/), { message: 'TEST_ERROR' });
     });
   });
 
@@ -192,31 +191,39 @@ describe('lib/utility', () => {
       let readFileDataFromZipStub = sinon.stub(utility, 'readFileDataFromZip');
 
       readFileDataFromZipStub
-        .withArgs(0, /^Payload\/[^/]*.app\/Info\.plist$/)
+        .withArgs({ fd: 0 }, /^Payload\/[^/]*.app\/Info\.plist$/)
         .resolves({ data: Buffer.from(TEST_PLIST), fileName: 'Payload/Test.app/Info.plist', path: 'Test.app/Info.plist' });
 
       readFileDataFromZipStub
-        .withArgs(0, /^Payload\/[^/]*.app\/embedded\.mobileprovision$/)
+        .withArgs({ fd: 0 }, /^Payload\/[^/]*.app\/embedded\.mobileprovision$/)
         .resolves({ data: Buffer.from('MOBILEPROVISION_CONTENT'), fileName: 'Payload/Test.app/embedded.mobileprovision', path: 'Test.app/embedded.mobileprovision' });
 
       readFileDataFromZipStub
-        .withArgs(1, sinon.match.regexp)
-        .resolves(null);
+        .withArgs({ fd: 1 }, sinon.match.regexp)
+        .rejects(new Error('FILE_ERROR'));
 
       readFileDataFromZipStub
-        .withArgs(2, /^Payload\/[^/]*.app\/Info\.plist$/)
+        .withArgs({ fd: 2 }, /^Payload\/[^/]*.app\/Info\.plist$/)
         .resolves({ data: Buffer.from('INVALID'), fileName: 'Payload/Test.app/Info.plist', path: 'Test.app/Info.plist' });
 
       readFileDataFromZipStub
-        .withArgs(2, /^Payload\/[^/]*.app\/embedded\.mobileprovision$/)
+        .withArgs({ fd: 2 }, /^Payload\/[^/]*.app\/embedded\.mobileprovision$/)
+        .resolves(null);
+
+      readFileDataFromZipStub
+        .withArgs({ fd: 3 }, /^Payload\/[^/]*.app\/Info\.plist$/)
+        .resolves({ data: Buffer.from('INVALID'), fileName: 'Payload/Test.app/Info.plist', path: 'Test.app/Info.plist' });
+
+      readFileDataFromZipStub
+        .withArgs({ fd: 3 }, /^Payload\/[^/]*.app\/embedded\.mobileprovision$/)
         .resolves({ data: Buffer.from('MOBILEPROVISION_CONTENT'), fileName: 'Payload/Test.app/embedded.mobileprovision', path: 'Test.app/embedded.mobileprovision' });
 
       readFileDataFromZipStub
-        .withArgs(3, /^Payload\/[^/]*.app\/Info\.plist$/)
+        .withArgs({ fd: 4 }, /^Payload\/[^/]*.app\/Info\.plist$/)
         .resolves({ data: Buffer.from(EMPTY_PLIST), fileName: 'Payload/Test.app/Info.plist', path: 'Test.app/Info.plist' });
 
       readFileDataFromZipStub
-        .withArgs(3, /^Payload\/[^/]*.app\/embedded\.mobileprovision$/)
+        .withArgs({ fd: 4 }, /^Payload\/[^/]*.app\/embedded\.mobileprovision$/)
         .resolves({ data: Buffer.from('MOBILEPROVISION_CONTENT'), fileName: 'Payload/Test.app/embedded.mobileprovision', path: 'Test.app/embedded.mobileprovision' });
     });
 
@@ -225,33 +232,38 @@ describe('lib/utility', () => {
     });
 
     it('should resolve on success', async () => {
-      let bundleInfo = await utility.extractBundleIdAndVersion(0);
-      sinon.assert.match(bundleInfo, {
+      const ctx = { fileHandle: { fd: 0 } };
+      await utility.extractBundleIdAndVersion(ctx);
+      sinon.assert.match(ctx, {
         bundleId: 'BUNDLE_IDENTIFIER',
         bundleVersion: 'BUNDLE_VERSION',
         bundleShortVersion: 'BUNDLE_SHORT_VERSION',
-        bundlePath: 'Test.app',
+        infoPlist: sinon.match.object,
         mobileProvision: sinon.match.object,
       });
     });
 
     it('should reject with error on failure 1', async () => {
-      await assert.rejects(utility.extractBundleIdAndVersion(1), { message: 'Info.plist not found' });
+      await assert.rejects(utility.extractBundleIdAndVersion({ fileHandle: { fd: 1 } }), { message: 'Info.plist not found' });
     });
 
     it('should reject with error on failure 2', async () => {
-      await assert.rejects(utility.extractBundleIdAndVersion(2), { message: 'Failed to parse Info.plist' });
+      await assert.rejects(utility.extractBundleIdAndVersion({ fileHandle: { fd: 2 } }), { message: 'embedded.mobileprovision not found' });
     });
 
     it('should reject with error on failure 3', async () => {
-      await assert.rejects(utility.extractBundleIdAndVersion(3), { message: 'Bundle info not found in Info.plist' });
+      await assert.rejects(utility.extractBundleIdAndVersion({ fileHandle: { fd: 3 } }), { message: 'Failed to parse Info.plist' });
+    });
+
+    it('should reject with error on failure 4', async () => {
+      await assert.rejects(utility.extractBundleIdAndVersion({ fileHandle: { fd: 4 } }), { message: 'Bundle info not found in Info.plist' });
     });
   });
 
   describe('ensureTempDir()', () => {
     before(() => {
-      let stub = sinon.stub(fs.promises, 'mkdir');
-      stub.withArgs(sinon.match.string, { recursive: true }).resolves(undefined);
+      let stub = sinon.stub(fs, 'mkdir');
+      stub.withArgs(sinon.match.string, { recursive: true }).resolves();
     });
 
     after(() => {
@@ -265,52 +277,54 @@ describe('lib/utility', () => {
   });
 
   describe('downloadTempFile()', () => {
+    let fileHandle;
     beforeEach(() => {
-      let readableStream = new stream.PassThrough();
-      readableStream.end();
+      fetchMock
+        .mockGlobal()
+        .route('http://example.com/app.ipa', { body: 'DATA', headers: { 'content-length': 1 } }, { name: 'lookup-success' })
+        .route('http://example.com/app-no-cl.ipa', new Response('DATA'), { name: 'lookup-success-no-cl' })
+        .route('http://example.com/app-not-found.ipa', 404, { name: 'lookup-not-found' });
 
-      let axiosStub = sinon.stub(axios, 'get');
-      axiosStub.withArgs('http://example.com/app.ipa', { responseType: 'stream' })
-        .resolves({ data: readableStream, headers: { 'content-length': 1 } });
-
-      axiosStub.withArgs('http://example.com/app-no-cl.ipa', { responseType: 'stream' })
-        .resolves({ data: readableStream, headers: {} });
+      fileHandle = { fd: 0, path: 'PATH', write: sinon.stub().resolves(), sync: sinon.stub().resolves() };
 
       let ensureTempDirStub = sinon.stub(utility, 'ensureTempDir');
       ensureTempDirStub.resolves('PATH');
 
-      let writeStream = new stream.Writable();
-
-      let createWriteStreamStub = sinon.stub(fs, 'createWriteStream');
-      createWriteStreamStub.withArgs(sinon.match.string).returns(writeStream);
+      let openFileStub = sinon.stub(utility, 'openFile');
+      openFileStub.resolves(fileHandle);
     });
 
     afterEach(() => {
       sinon.restore();
+      fetchMock.hardReset();
     });
 
     it('should resolve on success', async () => {
       const onProgressCallback = sinon.spy();
       let res = await utility.downloadTempFile('http://example.com/app.ipa', onProgressCallback);
-      sinon.assert.match(res, 'PATH');
+      sinon.assert.called(fileHandle.write);
+      sinon.assert.calledOnce(fileHandle.sync);
+      sinon.assert.match(res.path, 'PATH');
       sinon.assert.called(onProgressCallback);
     });
 
     it('should not call onProgress if content-length unknown', async () => {
       const onProgressCallback = sinon.spy();
       let res = await utility.downloadTempFile('http://example.com/app-no-cl.ipa', onProgressCallback);
-      sinon.assert.match(res, 'PATH');
+      sinon.assert.called(fileHandle.write);
+      sinon.assert.calledOnce(fileHandle.sync);
+      sinon.assert.match(res.path, 'PATH');
       sinon.assert.notCalled(onProgressCallback);
     });
 
     it('should reject with error on failure', async () => {
-      await assert.rejects(utility.downloadTempFile());
+      await assert.rejects(utility.downloadTempFile('http://example.com/app-not-found.ipa'));
     });
   });
 
   describe('removeTempFile()', () => {
     before(() => {
-      let unlinkStub = sinon.stub(fs.promises, 'unlink');
+      let unlinkStub = sinon.stub(fs, 'unlink');
       unlinkStub.withArgs('FILE_PATH').resolves();
       unlinkStub.rejects();
     });
@@ -329,10 +343,10 @@ describe('lib/utility', () => {
   });
 
   describe('getFileStats()', () => {
-    before(() => {
-      let stub = sinon.stub(fs, 'fstat');
-      stub.withArgs(1).yields(undefined, {});
-      stub.withArgs(0).yields(new Error(), undefined);
+    let fileHandle;
+
+    beforeEach(() => {
+      fileHandle = { stat: sinon.stub() };
     });
 
     after(() => {
@@ -340,40 +354,30 @@ describe('lib/utility', () => {
     });
 
     it('should resolve on success', async () => {
-      let stats = await utility.getFileStats(1);
-      assert.deepEqual(stats, {});
+      fileHandle.stat.withArgs().resolves({ size: 123 });
+      let stats = await utility.getFileStats(fileHandle);
+      assert.deepEqual(stats, { size: 123 });
     });
 
     it('should reject with error on failure', async () => {
-      await assert.rejects(utility.getFileStats(0));
-    });
-  });
-
-  describe('readFile()', () => {
-    before(() => {
-      let stub = sinon.stub(fs, 'readFile');
-      stub.withArgs('VALIDPATH').yields(undefined, 'data');
-      stub.withArgs('WRONGPATH').yields(new Error(), undefined);
-    });
-
-    after(() => {
-      sinon.restore();
-    });
-
-    it('should resolve on success', async () => {
-      let data = await utility.readFile('VALIDPATH');
-      assert.deepEqual(data, 'data');
-    });
-
-    it('should reject with error on failure', async () => {
-      await assert.rejects(utility.readFile('WRONGPATH'));
+      fileHandle.stat.withArgs().rejects(new Error());
+      await assert.rejects(utility.getFileStats(fileHandle));
     });
   });
 
   describe('getFileMD5()', () => {
-    before(() => {
-      let stub = sinon.stub(fs, 'createReadStream');
-      stub.withArgs(sinon.match.string, sinon.match({ fd: 1 })).callsFake(() => {
+    let fileHandle;
+
+    beforeEach(() => {
+      fileHandle = { createReadStream: sinon.stub() };
+    });
+
+    after(() => {
+      sinon.restore();
+    });
+
+    it('should resolve on success', async () => {
+      fileHandle.createReadStream.withArgs({ start: 0, autoClose: false }).callsFake(() => {
         return new stream.Readable({
           read: function () {
             this.push('data');
@@ -381,7 +385,13 @@ describe('lib/utility', () => {
           },
         });
       });
-      stub.withArgs(sinon.match.string, sinon.match({ fd: 0 })).callsFake(() => {
+
+      let md5 = await utility.getFileMD5(fileHandle);
+      assert.deepEqual(md5, '8d777f385d3dfec8815d20f7496026dc');
+    });
+
+    it('should reject with error on failure', async () => {
+      fileHandle.createReadStream.withArgs({ start: 0, autoClose: false }).callsFake(() => {
         return new stream.Readable({
           read: function () {
             this.emit('error', new Error());
@@ -389,43 +399,36 @@ describe('lib/utility', () => {
           },
         });
       });
-    });
-
-    after(() => {
-      sinon.restore();
-    });
-
-    it('should resolve on success', async () => {
-      let md5 = await utility.getFileMD5(1);
-      assert.deepEqual(md5, '8d777f385d3dfec8815d20f7496026dc');
-    });
-
-    it('should reject with error on failure', async () => {
-      await assert.rejects(utility.getFileMD5(0));
+      await assert.rejects(utility.getFileMD5(fileHandle));
     });
   });
 
   describe('getFilePart()', () => {
-    before(() => {
-      let fsMock = sinon.mock(fs);
-      fsMock.expects('read').withArgs(1, sinon.match.instanceOf(Buffer), 0, 4, 0).callsFake((fd, buffer, offset, length, position, cb) => {
-        buffer.write('PART');
-        cb();
-      });
-      fsMock.expects('read').yields(new Error());
+    let fileHandle;
+
+    beforeEach(() => {
+      fileHandle = { read: sinon.stub() };
     });
 
-    after(() => {
+    afterEach(() => {
       sinon.restore();
     });
 
     it('should resolve on success', async () => {
-      let part = await utility.getFilePart(1, 0, 4);
+      fileHandle.read.withArgs(sinon.match.instanceOf(Buffer), { position: 0, length: 4 }).callsFake(async (buffer) => {
+        buffer.write('PART');
+      });
+
+      let part = await utility.getFilePart(fileHandle, 0, 4);
+      sinon.assert.calledOnce(fileHandle.read);
       assert.deepEqual(part, Buffer.from('PART'));
     });
 
     it('should reject with error on failure', async () => {
-      await assert.rejects(utility.getFilePart(0, 0, 4));
+      fileHandle.read.withArgs(sinon.match.instanceOf(Buffer), { position: 0, length: 4 }).rejects(new Error());
+
+      await assert.rejects(utility.getFilePart(fileHandle, 0, 4));
+      sinon.assert.calledOnce(fileHandle.read);
     });
   });
 
@@ -438,27 +441,6 @@ describe('lib/utility', () => {
   describe('getMD5HashBuffer()', () => {
     it('should return correct md5 hash buffer', () => {
       assert.deepEqual(utility.getMD5HashBuffer('data'), Buffer.from('8d777f385d3dfec8815d20f7496026dc', 'hex'));
-    });
-  });
-
-  describe('bufferToGZBase64()', () => {
-    it('should return correct md5 hash buffer', async () => {
-      let gzBase64 = await utility.bufferToGZBase64(Buffer.from('data'));
-      assert(typeof gzBase64 === 'string');
-    });
-
-    it('should reject with error on failure', async () => {
-      const zlibMock = sinon.mock(zlib);
-
-      zlibMock.expects('gzip')
-        .withArgs(sinon.match.instanceOf(Buffer))
-        .once()
-        .yields(new Error('TEST_ERROR'), null);
-
-      await assert.rejects(utility.bufferToGZBase64(Buffer.alloc(0)));
-
-      zlibMock.verify();
-      sinon.restore();
     });
   });
 

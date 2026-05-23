@@ -8,43 +8,47 @@
     "ios"
   ],
   "homepage": "https://github.com/simonnilsson/ios-uploader#readme",
-  "repository": "https://github.com/simonnilsson/ios-uploader",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/simonnilsson/ios-uploader.git"
+  },
   "author": "Simon Nilsson <simon@nilsson.ml>",
   "license": "MIT",
   "main": "./lib/index.js",
+  "type": "module",
   "bin": {
-    "ios-uploader": "./bin/cli.js"
+    "ios-uploader": "bin/index.js"
   },
   "scripts": {
-    "start": "node bin/cli.js",
-    "build": "pkg --out-path build --compress Brotli .",
+    "start": "node bin/index.js",
+    "build": "pkg .",
     "lint": "eslint --max-warnings 0 ./bin/*.js ./lib/*.js ./test/*.js",
     "fix": "eslint --fix ./bin/*.js ./lib/*.js ./test/*.js",
-    "test": "nyc --reporter=text mocha",
-    "coverage": "nyc --reporter=lcov mocha"
+    "test": "c8 mocha",
+    "coverage": "c8 --reporter=lcov mocha"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "dependencies": {
     "async": "^3.2.6",
-    "axios": "^0.30.0",
     "cli-progress": "^3.12.0",
-    "commander": "^13.1.0",
-    "concat-stream": "^2.0.0",
-    "pretty-bytes": "^5.6.0",
+    "commander": "^14.0.3",
+    "pretty-bytes": "^7.1.0",
     "simple-plist": "^1.3.1",
-    "yauzl": "^3.2.0"
+    "yauzl": "^3.3.1"
   },
   "devDependencies": {
-    "@stylistic/eslint-plugin": "^4.2.0",
-    "@yao-pkg/pkg": "^6.4.0",
-    "eslint": "^9.25.0",
-    "eslint-plugin-jsdoc": "^50.6.9",
+    "@eslint/js": "^10.0.1",
+    "@stylistic/eslint-plugin": "^5.10.0",
+    "@yao-pkg/pkg": "^6.19.0",
+    "c8": "^11.0.0",
+    "eslint": "^10.4.0",
+    "eslint-plugin-jsdoc": "^63.0.0",
     "fetch-mock": "^12.6.0",
-    "mocha": "^11.1.0",
-    "nyc": "^17.1.0",
-    "sinon": "^20.0.0"
+    "globals": "^17.6.0",
+    "mocha": "^11.7.6",
+    "sinon": "^22.0.0"
   },
   "files": [
     "bin/",
@@ -57,10 +61,12 @@
     ],
     "assets": [],
     "targets": [
-      "node18-win-x64",
-      "node18-macos-x64",
-      "node18-linux-x64",
-      "node18-alpine-x64"
-    ]
+      "node20-win-x64",
+      "node20-macos-x64",
+      "node20-linux-x64",
+      "node20-alpine-x64"
+    ],
+    "outputPath": "build",
+    "compress": "Brotli"
   }
 }
