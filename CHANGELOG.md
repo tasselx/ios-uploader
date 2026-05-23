@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
 - **BREAKING** Dropped support for FTP URL input
 - Removed unused functions and dependencies
 - Removed comparison of deprecated altool from README.md
+- Removed awesome-ios badge (no longer listed due to single contributor)
 
 
 ## [3.1.0] - 2026-05-20
