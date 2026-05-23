@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 - Converted project to ESM
 - Updated dependencies
 - Axios completely replaced by fetch API
+- Updated github workflows
 
 ### Fixed
 - Removed no longer used metadata_template.xml
