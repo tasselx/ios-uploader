@@ -5,8 +5,8 @@ on:
     types: [published]
 
 permissions:
-  id-token: write  # Required for OIDC
-  contents: read
+  id-token: write # Required for OIDC
+  contents: write # Required for uploading release assets
 
 jobs:
   publish-npm:

@@ -2,6 +2,8 @@
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
+### Fixed
+- Release workflow permissions
 
 
 ## [4.0.0] - 2025-06-18
