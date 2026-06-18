@@ -33,7 +33,7 @@ describe('lib/index', () => {
     appName: 'APP_NAME',
     appIconUrl: 'ICON_URL',
     providerPublicId: 'PROVIDER_ID',
-    buildId: 'BUILD_ID',
+    currentBuild: { id: 'BUILD_ID', attributes: { processingState: null } },
     dsToken: 'DS_TOKEN',
     dsTokenName: 'DS_TOKEN_NAME',
   };
@@ -269,20 +269,10 @@ describe('lib/index', () => {
       fetchMock
         .mockGlobal()
         .route(buildUrl, {
-          data: [{
-            id: TEST_CTX.buildId,
-            attributes: {
-              uploadedDate: null,
-            },
-          }],
+          data: [TEST_CTX.currentBuild],
         }, { name: 'builds-fresh', repeat: 1 })
         .route(buildUrl, {
-          data: [{
-            id: TEST_CTX.buildId,
-            attributes: {
-              uploadedDate: '2020-01-01',
-            },
-          }],
+          data: [],
         }, { name: 'builds-uploaded', repeat: 1, overwriteRoutes: false })
         .route(buildUrl, {
           status: 400,
@@ -295,19 +285,20 @@ describe('lib/index', () => {
       fetchMock.hardReset();
     });
 
-    it('should set buildId when build exists', async () => {
-      const ctx = Object.assign({}, TEST_CTX);
+    it('should set currentBuild when build exists', async () => {
+      const ctx = Object.assign({}, TEST_CTX, { currentBuild: undefined });
       await index.checkBuilds(ctx);
-      sinon.assert.match(ctx, { buildId: TEST_CTX.buildId });
+      sinon.assert.match(ctx, { currentBuild: TEST_CTX.currentBuild });
     });
 
-    it('should reject when build is already uploaded', async () => {
-      const ctx = Object.assign({}, TEST_CTX);
-      await assert.rejects(index.checkBuilds(ctx), /already uploaded/);
+    it('should not set currentBuild when no build exists', async () => {
+      const ctx = Object.assign({}, TEST_CTX, { currentBuild: undefined });
+      await index.checkBuilds(ctx);
+      sinon.assert.match(ctx, { currentBuild: undefined });
     });
 
     it('should reject on lookup failure', async () => {
-      const ctx = Object.assign({}, TEST_CTX);
+      const ctx = Object.assign({}, TEST_CTX, { currentBuild: undefined });
       await assert.rejects(index.checkBuilds(ctx));
     });
   });
@@ -332,9 +323,7 @@ describe('lib/index', () => {
           }), {
             status: 201,
             body: {
-              data: {
-                id: TEST_CTX.buildId,
-              },
+              data: TEST_CTX.currentBuild,
             },
           }, { name: 'register-success' })
         .route(registerBuildUrl, {
@@ -348,10 +337,10 @@ describe('lib/index', () => {
       fetchMock.hardReset();
     });
 
-    it('should register build and set buildId', async () => {
-      const ctx = Object.assign({}, TEST_CTX);
+    it('should register build and set currentBuild', async () => {
+      const ctx = Object.assign({}, TEST_CTX, { currentBuild: undefined });
       await index.registerBuild(ctx);
-      sinon.assert.match(ctx, { buildId: TEST_CTX.buildId });
+      sinon.assert.match(ctx, { currentBuild: TEST_CTX.currentBuild });
     });
 
     it('should reject on registration failure', async () => {

@@ -53,6 +53,7 @@ $ ios-uploader -u <username> -p <password> -f <path/to/app.ipa>
   -p, --password <string>     app-specific password for your Apple ID
   -f, --file <string>         path to .ipa file for upload (local file or http(s):// URL)
   -c, --concurrency <number>  number of concurrent upload tasks to use (default: 4)
+  -s, --status                display upload status and exit
   -h, --help                  output this help message and exit
 ```
 

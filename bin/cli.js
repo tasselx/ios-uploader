@@ -18,7 +18,8 @@ const cli = new Command()
   .requiredOption('-u, --username <string>', 'your Apple ID')
   .requiredOption('-p, --password <string>', 'app-specific password for your Apple ID')
   .requiredOption('-f, --file <string>', 'path to .ipa file for upload (local file or http(s):// URL)')
-  .option('-c, --concurrency <number>', 'number of concurrent upload tasks to use', 4);
+  .option('-c, --concurrency <number>', 'number of concurrent upload tasks to use', 4)
+  .option('-s, --status', 'display upload status and exit');
 
 const fileUrlRegex = /^https?:\/\//i;
 
@@ -105,10 +106,26 @@ async function runUpload(ctx) {
     // Generate asset description.
     await api.generateAssetDescription(ctx);
 
-    // Check for existing builds with the same version, and register build if not found.
+    // Check for existing builds with the same version.
     await api.checkBuilds(ctx);
 
-    if (!ctx.buildId) {
+    if (ctx.currentBuild?.attributes.processingState) {
+      if (ctx.status) {
+        console.log(`Build version ${ctx.bundleVersion} is uploaded with state: ${ctx.currentBuild.attributes.processingState}`);
+        return;
+      }
+      else {
+        throw new Error(`A build with version ${ctx.bundleVersion} is already uploaded with state: ${ctx.currentBuild.attributes.processingState}.`);
+      }
+    }
+
+    if (ctx.status) {
+      console.log(`No existing upload with version ${ctx.bundleVersion} found.`);
+      return;
+    }
+
+    // Register new build if not found.
+    if (!ctx.currentBuild) {
       await api.registerBuild(ctx);
     }
 
@@ -179,6 +196,7 @@ export async function run() {
     password: options.password,
     filePath: options.file,
     concurrency: options.concurrency,
+    status: options.status,
   };
 
   await runUpload(ctx);
