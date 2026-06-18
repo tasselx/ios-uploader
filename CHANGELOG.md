@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file.
 - Updated dependencies
 - Axios completely replaced by fetch API
 - Updated github workflows
+- Updated standalone binaries to Node.js v20
 
 ### Fixed
 - Removed no longer used metadata_template.xml
