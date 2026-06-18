@@ -2,6 +2,9 @@
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
+
+
+## [4.0.0] - 2025-06-18
 ### Added
 - Added project icon
 - Added metadata to Windows executable, including icon
