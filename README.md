@@ -106,7 +106,7 @@ cargo check
 
 ## Credits
 
-This project is a Rust port of [simonnilsson/ios-uploader](https://github.com/simonnilsson/ios-uploader), originally written in Node.js and later migrated to Go.
+This project is a Rust port of [simonnilsson/ios-uploader](https://github.com/simonnilsson/ios-uploader), originally written in Node.js.
 
 <br>
 

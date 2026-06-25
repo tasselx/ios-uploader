@@ -106,7 +106,7 @@ cargo check
 
 ## 致谢
 
-本项目是 [simonnilsson/ios-uploader](https://github.com/simonnilsson/ios-uploader) 的 Rust 移植版，原项目最初用 Node.js 编写，后迁移至 Go。
+本项目是 [simonnilsson/ios-uploader](https://github.com/simonnilsson/ios-uploader) 的 Rust 移植版，原项目最初用 Node.js 编写。
 
 <br>
 
