@@ -1,11 +1,10 @@
-<p align="right">
-  <a href="README.md">🇬🇧 English</a>
-</p>
-
 <h1 align="center">
 <img src="icon.svg" height="128px" />
 <p>ios-uploader</p>
 </h1>
+<p align="center">
+  <a href="README.md">🇬🇧 English</a>
+</p>
 <p align="center">
 <a href="https://github.com/tasselx/ios-uploader/releases"><img src="https://img.shields.io/github/v/release/tasselx/ios-uploader?style=flat-square"></a>
 <a href="https://github.com/tasselx/ios-uploader/actions?query=workflow%3Aci+branch%3Amain"><img src="https://github.com/tasselx/ios-uploader/workflows/ci/badge.svg"></a>
