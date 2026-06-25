@@ -57,6 +57,23 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+      - name: Rename binaries with platform names
+        run: |
+          for dir in artifacts/*/; do
+            name=$(basename "$dir")
+            bin="$dir"ios-uploader
+            if [ -f "$bin" ]; then
+              case "$name" in
+                *x86_64-unknown-linux-gnu)   mv "$bin" "$dir"ios-uploader-linux-amd64 ;;
+                *aarch64-unknown-linux-gnu)   mv "$bin" "$dir"ios-uploader-linux-arm64 ;;
+                *x86_64-apple-darwin)         mv "$bin" "$dir"ios-uploader-darwin-amd64 ;;
+                *aarch64-apple-darwin)        mv "$bin" "$dir"ios-uploader-darwin-arm64 ;;
+                *windows-msvc)                mv "$bin.exe" "$dir"ios-uploader-windows-amd64.exe 2>/dev/null || true ;;
+                *windows-gnu)                 mv "$bin.exe" "$dir"ios-uploader-windows-amd64.exe 2>/dev/null || true ;;
+              esac
+            fi
+          done
+          ls -lh artifacts/*/
       - name: Upload release assets
         uses: AButler/upload-release-assets@v4.0
         with:
