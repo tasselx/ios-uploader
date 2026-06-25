@@ -133,7 +133,7 @@ impl Client {
             req = req.json(&json!({ "data": d }));
         }
 
-        Ok(req.send().await.context("Request failed")?)
+        req.send().await.context("Request failed")
     }
 
     pub async fn authenticate(&mut self) -> Result<()> {
@@ -202,7 +202,7 @@ impl Client {
         let success = result["Success"].as_bool().unwrap_or(false);
         let attributes = result["Attributes"].as_array();
 
-        if !success || attributes.map_or(true, |a| a.is_empty()) {
+        if !success || attributes.is_none_or(|a| a.is_empty()) {
             let error = result["ErrorMessage"].as_str().unwrap_or("Unknown error");
             anyhow::bail!("Application lookup failed!\n{}", error);
         }
@@ -232,8 +232,7 @@ impl Client {
             .unwrap_or_default()
             .to_string_lossy()
             .to_string()
-            .replace(':', "_")
-            .replace(' ', "_");
+            .replace([':', ' '], "_");
 
         self.ctx.file_name = file_name;
         self.ctx.file_checksum = utils::get_file_md5(
@@ -300,7 +299,7 @@ impl Client {
         let body: Value = resp.json().await?;
         let data = body["data"].as_array().cloned().unwrap_or_default();
 
-        let state_order = vec![
+        let state_order = [
             "WAITING_FOR_UPLOAD",
             "PROCESSING",
             "FAILED",
