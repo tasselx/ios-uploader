@@ -6,8 +6,11 @@
   <a href="README.md">🇬🇧 English</a>
 </p>
 <p align="center">
-<a href="https://github.com/tasselx/ios-uploader/releases"><img src="https://img.shields.io/github/v/release/tasselx/ios-uploader?style=flat-square"></a>
-<a href="https://github.com/tasselx/ios-uploader/actions?query=workflow%3Aci+branch%3Amain"><img src="https://github.com/tasselx/ios-uploader/workflows/ci/badge.svg"></a>
+<a href="https://github.com/tasselx/ios-uploader/releases"><img src="https://img.shields.io/github/v/release/tasselx/ios-uploader?style=flat-square&label=版本"></a>
+<a href="https://github.com/tasselx/ios-uploader/actions?query=workflow%3Aci+branch%3Amain"><img src="https://github.com/tasselx/ios-uploader/workflows/ci/badge.svg?style=flat-square"></a>
+<a href="LICENSE"><img src="https://img.shields.io/badge/许可证-MIT-blue?style=flat-square"></a>
+<a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/rust-1.75%2B-orange?style=flat-square&logo=rust"></a>
+<img src="https://img.shields.io/badge/平台-linux%20%7C%20macOS%20%7C%20windows-lightgrey?style=flat-square">
 </p>
 <p align="center">
 简单易用的跨平台工具，用于将 iOS 应用上传到 App Store Connect。
