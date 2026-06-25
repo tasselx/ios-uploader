@@ -6,37 +6,39 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          node-version: 24
-      - run: npm ci
-      - run: npm run lint
+          components: clippy
+      - name: Run clippy
+        run: cargo clippy -- -D warnings
 
   test:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        node-version: [20, 22, 24]
+        toolchain: [stable]
     steps:
-      - uses: actions/checkout@v6
-      - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v6
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          node-version: ${{ matrix.node-version }}
-      - run: npm ci
-      - run: npm test
+          toolchain: ${{ matrix.toolchain }}
+      - name: Run tests
+        run: cargo test
 
-  coveralls:
-    runs-on: ubuntu-latest
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        toolchain: [stable]
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          node-version: 24
-      - run: npm ci
-      - run: npm run coverage
-      - uses: coverallsapp/github-action@v2
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          toolchain: ${{ matrix.toolchain }}
+      - name: Build binary
+        run: cargo build --release
+      - name: Test binary
+        run: cargo run --release -- --help

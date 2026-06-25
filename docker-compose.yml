@@ -1,0 +1,11 @@
+version: '3'
+
+services:
+  ios-uploader:
+    build: .
+    volumes:
+      - ./ipa:/ipa
+    environment:
+      - USERNAME=${USERNAME}
+      - PASSWORD=${PASSWORD}
+    command: ["-u", "${USERNAME}", "-p", "${PASSWORD}", "-f", "/ipa/app.ipa"]

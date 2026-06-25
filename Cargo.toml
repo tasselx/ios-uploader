@@ -1,0 +1,30 @@
+[package]
+name = "ios-uploader"
+version = "5.0.0"
+edition = "2021"
+description = "Easy to use, cross-platform tool to upload iOS apps to App Store Connect"
+license = "MIT"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+zip = "2"
+plist = "1"
+md-5 = "0.10"
+indicatif = "0.17"
+anyhow = "1"
+tempfile = "3"
+chrono = "0.4"
+base64 = "0.22"
+futures-util = "0.3"
+http = "1"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

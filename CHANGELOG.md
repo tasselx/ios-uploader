@@ -2,6 +2,19 @@
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
+### Added
+- Rust implementation with cross-platform binary compilation
+- Docker support (Rust-based)
+
+### Changed
+- **BREAKING** Replaced Go implementation with Rust
+- No longer requires Go runtime for source builds
+- Updated CI/CD workflows for Rust (cargo build, test, clippy)
+- Updated dependencies to Rust crates
+
+### Removed
+- Removed Go implementation (main.go, cmd/, internal/, go.mod, go.sum)
+
 ### Fixed
 - Release workflow permissions
 
