@@ -1,3 +1,7 @@
+<p align="right">
+  <a href="README.zh.md">🇨🇳 中文</a>
+</p>
+
 <h1 align="center">
 <img src="icon.svg" height="128px" />
 <p>ios-uploader</p>
