@@ -7,7 +7,7 @@
 </p>
 <p align="center">
 <a href="https://github.com/tasselx/ios-uploader/releases"><img src="https://img.shields.io/github/v/release/tasselx/ios-uploader?style=flat-square&label=版本"></a>
-<a href="https://github.com/tasselx/ios-uploader/actions?query=workflow%3Aci+branch%3Amain"><img src="https://github.com/tasselx/ios-uploader/workflows/ci/badge.svg?style=flat-square"></a>
+<a href="https://github.com/tasselx/ios-uploader/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/tasselx/ios-uploader/ci.yml?branch=main&style=flat-square"></a>
 <a href="LICENSE"><img src="https://img.shields.io/badge/许可证-MIT-blue?style=flat-square"></a>
 <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/rust-1.75%2B-orange?style=flat-square&logo=rust"></a>
 <img src="https://img.shields.io/badge/平台-linux%20%7C%20macOS%20%7C%20windows-lightgrey?style=flat-square">
